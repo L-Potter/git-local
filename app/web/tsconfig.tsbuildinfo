@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/components/changelist.tsx","./src/components/commitform.tsx","./src/components/contextmenu.tsx","./src/components/diffviewer.tsx","./src/components/header.tsx","./src/components/history.tsx","./src/components/loginform.tsx"],"version":"5.9.3"}
