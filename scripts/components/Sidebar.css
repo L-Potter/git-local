@@ -1,0 +1,115 @@
+.sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 64px;
+  background: white;
+  border-right: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  padding: 16px 0;
+}
+
+.sidebar-icons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.sidebar-icon {
+  width: 48px;
+  height: 48px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.sidebar-icon:hover {
+  background: #f5f5f5;
+  color: #2196f3;
+}
+
+.sidebar-icon.active {
+  background: #e3f2fd;
+  color: #2196f3;
+}
+
+.sidebar-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* User info section */
+.sidebar-user {
+  margin-top: auto;
+  padding: 16px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-id {
+  font-size: 12px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.user-role {
+  font-size: 10px;
+  color: #2196f3;
+  background: #e3f2fd;
+  padding: 2px 6px;
+  border-radius: 10px;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.logout-button {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.logout-button:hover {
+  background: #ffebee;
+  color: #f44336;
+}
+
+.logout-button svg {
+  width: 16px;
+  height: 16px;
+}
