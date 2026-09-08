@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useShiftAssignmentsAPI, ShiftAssignment } from '../hooks/useShiftAssignmentsAPI'
 import { useShiftSettingAPI, LeaveType } from '../hooks/useShiftSettingAPI'
 import { useUsersAPI, User } from '../hooks/useUsersAPI'
@@ -16,6 +16,10 @@ import {
   getSundayWeek,
   isWeekStart,
 } from '../utils/workHoursEstimate'
+import {
+  getProductionMonthInfo,
+  downloadShiftStatsWorkbook,
+} from '../utils/shiftStatsExcelExport'
 import './ShiftStatsReport.css'
 
 type DailyShiftRates = {
@@ -42,11 +46,11 @@ const REPORT_CATEGORY_STORAGE_KEY = 'shift-stats-report-categories-v1'
 
 const RATE_LABELS: Record<RateKind, string> = {
   leave: '請假率',
-  overtime: '對班加班率',
+  overtime: '加班率',
   net: '淨出席率',
 }
 
-/** 對班加班：各班別計數來源為對班人員（DB←DA、DA←DB、NA←NB、NB←NA） */
+/** 加班：各班別計數來源為對班人員（DB←DA、DA←DB、NA←NB、NB←NA） */
 const OPPOSITE_SHIFT_LINE: Record<ShiftLine, ShiftLine> = {
   DA: 'DB',
   DB: 'DA',
@@ -119,12 +123,12 @@ function DailyRateTooltipContent({
           {groupLabel ? ` [${groupLabel}]` : ''} is_not_workday=0 且非國定假日）
         </li>
         <li>
-          對班加班人數：{rates.overtimeCount}（
+          加班人數：{rates.overtimeCount}（
           {OPPOSITE_SHIFT_LINE[shiftLine as ShiftLine] ?? '對班'} 班
           {groupLabel ? ` [${groupLabel}]` : ''} is_not_workday=1）
         </li>
         <li>請假率：{formatCountRate(rates.leaveCount, rates.headcount, rates.leaveRate)}</li>
-        <li>對班加班率：{formatCountRate(rates.overtimeCount, rates.headcount, rates.overtimeRate)}</li>
+        <li>加班率：{formatCountRate(rates.overtimeCount, rates.headcount, rates.overtimeRate)}</li>
         <li>
           淨出席率：{formatRate(rates.netRate)} ((
           {rates.headcount}+{rates.overtimeCount}-{rates.leaveCount})/{rates.headcount})
@@ -370,12 +374,94 @@ const ShiftStatsReport: React.FC = () => {
     overtimeCount: '',
     leaveCount: '',
   })
-  
+
   type SortKey = 'shiftLine' | 'name' | 'group' | 'overtimeCount' | 'leaveCount' | 'previous30Hours'
   const [sortConfig, setSortConfig] = useState<{ key: SortKey | null, direction: 'asc' | 'desc' | null }>({
     key: null,
     direction: null,
   })
+
+  // 匯出 Excel 彈窗狀態
+  const [showExportModal, setShowExportModal] = useState(false)
+  const initialExportYear = useMemo(() => {
+    const d = new Date(startDate + 'T12:00:00')
+    return !Number.isNaN(d.getTime()) ? d.getFullYear() : new Date().getFullYear()
+  }, [startDate])
+  const initialExportMonth = useMemo(() => {
+    const d = new Date(startDate + 'T12:00:00')
+    return !Number.isNaN(d.getTime()) ? d.getMonth() + 1 : new Date().getMonth() + 1
+  }, [startDate])
+
+  const [exportYear, setExportYear] = useState<number>(initialExportYear)
+  const [exportMonth, setExportMonth] = useState<number>(initialExportMonth)
+  const [exportScopeMode, setExportScopeMode] = useState<'CATEGORIES' | 'GROUPS'>('CATEGORIES')
+  const [selectedExportCategoryIds, setSelectedExportCategoryIds] = useState<string[]>([])
+  const [selectedExportGroups, setSelectedExportGroups] = useState<string[]>([])
+  const [includeGrandTotal, setIncludeGrandTotal] = useState<boolean>(true)
+  const [exporting, setExporting] = useState(false)
+  const hasInitializedExportGroupsRef = useRef(false)
+  const hasInitializedExportCategoryIdsRef = useRef(false)
+
+  useEffect(() => {
+    const d = new Date(startDate + 'T12:00:00')
+    if (!Number.isNaN(d.getTime())) {
+      setExportYear(d.getFullYear())
+      setExportMonth(d.getMonth() + 1)
+    }
+  }, [startDate])
+
+  const exportMonthInfo = useMemo(() => {
+    return getProductionMonthInfo(exportYear, exportMonth)
+  }, [exportYear, exportMonth])
+
+  const handleExportExcel = () => {
+    const isCategory = exportScopeMode === 'CATEGORIES' && reportCategories.length > 0
+    if (isCategory && selectedExportCategoryIds.length === 0 && !includeGrandTotal) {
+      alert('請至少勾選一個自定義分類，或勾選包含全廠 Total！')
+      return
+    }
+    if (!isCategory && selectedExportGroups.length === 0 && !includeGrandTotal) {
+      alert('請至少勾選一個群組，或勾選包含全廠 Total！')
+      return
+    }
+
+    try {
+      setExporting(true)
+      downloadShiftStatsWorkbook({
+        monthInfo: exportMonthInfo,
+        assignments,
+        employees,
+        leaveTypes,
+        calendarTagGetter,
+        categories: reportCategories,
+        selectedCategoryIds: selectedExportCategoryIds,
+        selectedGroups: selectedExportGroups,
+        exportScopeMode,
+        includeGrandTotal,
+      })
+      setShowExportModal(false)
+    } catch (err) {
+      console.error('Export error:', err)
+      alert('匯出 Excel 失敗: ' + (err instanceof Error ? err.message : '未知錯誤'))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleOpenExportModal = () => {
+    if (reportCategories.length > 0) {
+      setExportScopeMode('CATEGORIES')
+      if (selectedExportCategoryIds.length === 0) {
+        setSelectedExportCategoryIds(reportCategories.map((c) => c.id))
+      }
+    } else {
+      setExportScopeMode('GROUPS')
+      if (selectedExportGroups.length === 0 && availableUserGroups.length > 0) {
+        setSelectedExportGroups(availableUserGroups.map((g) => g.name))
+      }
+    }
+    setShowExportModal(true)
+  }
 
   useEffect(() => {
     if (!user?.user_id) return
@@ -456,8 +542,28 @@ const ShiftStatsReport: React.FC = () => {
     }
     return [...groupCounts.entries()]
       .map(([name, memberCount]) => ({ name, memberCount }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
+      .sort((a, b) => {
+        if (a.name === 'G1') return -1
+        if (b.name === 'G1') return 1
+        if (a.name === 'G2') return -1
+        if (b.name === 'G2') return 1
+        return a.name.localeCompare(b.name, 'zh-Hant')
+      })
   }, [employees])
+
+  useEffect(() => {
+    if (!hasInitializedExportGroupsRef.current && availableUserGroups.length > 0) {
+      setSelectedExportGroups(availableUserGroups.map((g) => g.name))
+      hasInitializedExportGroupsRef.current = true
+    }
+  }, [availableUserGroups])
+
+  useEffect(() => {
+    if (!hasInitializedExportCategoryIdsRef.current && reportCategories.length > 0) {
+      setSelectedExportCategoryIds(reportCategories.map((c) => c.id))
+      hasInitializedExportCategoryIdsRef.current = true
+    }
+  }, [reportCategories])
 
   const addReportCategory = () => {
     setReportCategories((current) => [...current, createReportCategory(current.length + 1)])
@@ -696,10 +802,10 @@ const ShiftStatsReport: React.FC = () => {
       result = [...result].sort((a, b) => {
         let valA: any = a[sortConfig.key!]
         let valB: any = b[sortConfig.key!]
-        
+
         if (valA === null) valA = 0
         if (valB === null) valB = 0
-        
+
         if (valA < valB) {
           return sortConfig.direction === 'asc' ? -1 : 1
         }
@@ -709,7 +815,7 @@ const ShiftStatsReport: React.FC = () => {
         return 0
       })
     }
-    
+
     return result
   }, [employeeSummaryRows, searchQuery, columnFilters, sortConfig])
 
@@ -875,6 +981,14 @@ const ShiftStatsReport: React.FC = () => {
             終止日期
             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </label>
+          <button
+            type="button"
+            className="shift-stats-export-btn"
+            onClick={handleOpenExportModal}
+            title="匯出符合指定格式的 Excel 活頁簿（含月份總結與各週獨立 Sheet）"
+          >
+            📊 匯出出勤統計 Excel
+          </button>
         </div>
       </div>
 
@@ -884,9 +998,9 @@ const ShiftStatsReport: React.FC = () => {
           區域一 · 人員排班統計（{startDate} ～ {endDate}）
         </h2>
         <div className="table-search-panel">
-          <input 
-            type="text" 
-            placeholder="全域搜尋 (姓名、班別、群組)..." 
+          <input
+            type="text"
+            placeholder="全域搜尋 (姓名、班別、群組)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="search-input"
@@ -917,19 +1031,19 @@ const ShiftStatsReport: React.FC = () => {
               </tr>
               <tr className="filter-row">
                 <th>
-                  <input type="text" placeholder="過濾..." value={columnFilters.shiftLine} onChange={e => setColumnFilters({...columnFilters, shiftLine: e.target.value})} />
+                  <input type="text" placeholder="過濾..." value={columnFilters.shiftLine} onChange={e => setColumnFilters({ ...columnFilters, shiftLine: e.target.value })} />
                 </th>
                 <th>
-                  <input type="text" placeholder="過濾..." value={columnFilters.name} onChange={e => setColumnFilters({...columnFilters, name: e.target.value})} />
+                  <input type="text" placeholder="過濾..." value={columnFilters.name} onChange={e => setColumnFilters({ ...columnFilters, name: e.target.value })} />
                 </th>
                 <th>
-                  <input type="text" placeholder="過濾..." value={columnFilters.group} onChange={e => setColumnFilters({...columnFilters, group: e.target.value})} />
+                  <input type="text" placeholder="過濾..." value={columnFilters.group} onChange={e => setColumnFilters({ ...columnFilters, group: e.target.value })} />
                 </th>
                 <th className="num-cell">
-                  <input type="text" placeholder="過濾..." value={columnFilters.overtimeCount} onChange={e => setColumnFilters({...columnFilters, overtimeCount: e.target.value})} className="num-filter" />
+                  <input type="text" placeholder="過濾..." value={columnFilters.overtimeCount} onChange={e => setColumnFilters({ ...columnFilters, overtimeCount: e.target.value })} className="num-filter" />
                 </th>
                 <th className="num-cell">
-                  <input type="text" placeholder="過濾..." value={columnFilters.leaveCount} onChange={e => setColumnFilters({...columnFilters, leaveCount: e.target.value})} className="num-filter" />
+                  <input type="text" placeholder="過濾..." value={columnFilters.leaveCount} onChange={e => setColumnFilters({ ...columnFilters, leaveCount: e.target.value })} className="num-filter" />
                 </th>
                 <th></th>
               </tr>
@@ -1224,6 +1338,331 @@ const ShiftStatsReport: React.FC = () => {
           </div>
         )}
       </section>
+
+      {/* 匯出出勤統計 Excel 彈窗 */}
+      {showExportModal && (
+        <div className="shift-stats-modal-overlay" onClick={() => setShowExportModal(false)}>
+          <div className="shift-stats-modal-panel" onClick={(e) => e.stopPropagation()}>
+            <h2 className="shift-stats-modal-title">
+              <span>📊</span> 匯出出勤統計 Excel（週 / 月報表）
+            </h2>
+
+            <div className="shift-stats-modal-fields">
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <div className="shift-stats-modal-field" style={{ flex: 1 }}>
+                  <label>年份</label>
+                  <select
+                    value={exportYear}
+                    onChange={(e) => setExportYear(Number(e.target.value))}
+                  >
+                    {[2024, 2025, 2026, 2027, 2028].map((y) => (
+                      <option key={y} value={y}>
+                        {y} 年
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="shift-stats-modal-field" style={{ flex: 1 }}>
+                  <label>月份（生產月）</label>
+                  <select
+                    value={exportMonth}
+                    onChange={(e) => setExportMonth(Number(e.target.value))}
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <option key={m} value={m}>
+                        {m} 月
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="shift-stats-modal-field">
+                <div className="shift-stats-scope-tabs">
+                  <button
+                    type="button"
+                    className={`shift-stats-scope-tab ${exportScopeMode === 'CATEGORIES' ? 'active' : ''}`}
+                    onClick={() => setExportScopeMode('CATEGORIES')}
+                  >
+                    🏷️ 自定義分類（{reportCategories.length}）
+                  </button>
+                  <button
+                    type="button"
+                    className={`shift-stats-scope-tab ${exportScopeMode === 'GROUPS' ? 'active' : ''}`}
+                    onClick={() => setExportScopeMode('GROUPS')}
+                  >
+                    👥 原始群組（{availableUserGroups.length}）
+                  </button>
+                </div>
+
+                {exportScopeMode === 'CATEGORIES' ? (
+                  reportCategories.length === 0 ? (
+                    <div className="shift-stats-category-empty-notice">
+                      <div>💡 <strong>尚未建立自定義分類</strong></div>
+                      <div>
+                        您可以在報表的「管理分類」中新增自定義分類（例如：一課、二課，並於 <code>shift-stats-category-name-field</code> 輸入名稱及挑選群組），各分類名稱將作為 Excel 的「分類」列。
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          addReportCategory()
+                        }}
+                      >
+                        + 立即新增第一個分類
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="shift-stats-group-selector-header">
+                        <label style={{ margin: 0, fontWeight: 600 }}>
+                          自定義分類（已選 {selectedExportCategoryIds.length} / {reportCategories.length} 個分類
+                          {includeGrandTotal ? ' ＋ 全廠 Total' : ''}）
+                        </label>
+                        <div className="shift-stats-group-quick-actions">
+                          <button
+                            type="button"
+                            className="shift-stats-group-quick-btn"
+                            onClick={() =>
+                              setSelectedExportCategoryIds(reportCategories.map((c) => c.id))
+                            }
+                            title="勾選全部自定義分類"
+                          >
+                            全選
+                          </button>
+                          <button
+                            type="button"
+                            className="shift-stats-group-quick-btn"
+                            onClick={() => setSelectedExportCategoryIds([])}
+                            title="清除選取的分類"
+                          >
+                            清空
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="shift-stats-group-checkbox-grid">
+                        {reportCategories.map((cat) => {
+                          const checked = selectedExportCategoryIds.includes(cat.id)
+                          const groupSet = new Set(cat.groupNames)
+                          const count = employees.filter(
+                            (e) => e.role !== 'admin' && groupSet.has(e.group?.trim() || '未定義')
+                          ).length
+                          const catName = cat.name.trim() || '未命名分類'
+                          const groupDesc = cat.groupNames.length > 0 ? cat.groupNames.join(', ') : '未設定群組'
+                          return (
+                            <label
+                              key={cat.id}
+                              className="shift-stats-group-checkbox-item"
+                              title={`包含群組: ${groupDesc} (${count}人)`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedExportCategoryIds((prev) => [...prev, cat.id])
+                                  } else {
+                                    setSelectedExportCategoryIds((prev) =>
+                                      prev.filter((id) => id !== cat.id)
+                                    )
+                                  }
+                                }}
+                              />
+                              <strong>{catName}</strong>
+                              <span className="shift-stats-group-checkbox-badge">
+                                ({count}人 · {groupDesc})
+                              </span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </>
+                  )
+                ) : (
+                  <>
+                    <div className="shift-stats-group-selector-header">
+                      <label style={{ margin: 0, fontWeight: 600 }}>
+                        原始群組範圍（已選 {selectedExportGroups.length} 個群組
+                        {includeGrandTotal ? ' ＋ 全廠 Total' : ''}）
+                      </label>
+                      <div className="shift-stats-group-quick-actions">
+                        <button
+                          type="button"
+                          className="shift-stats-group-quick-btn"
+                          onClick={() =>
+                            setSelectedExportGroups(availableUserGroups.map((g) => g.name))
+                          }
+                          title="勾選全部群組"
+                        >
+                          全選
+                        </button>
+                        <button
+                          type="button"
+                          className="shift-stats-group-quick-btn"
+                          onClick={() => setSelectedExportGroups([])}
+                          title="清除勾選群組"
+                        >
+                          清空
+                        </button>
+                        {availableUserGroups.some((g) => g.name === 'G1' || g.name === 'G2') && (
+                          <button
+                            type="button"
+                            className="shift-stats-group-quick-btn"
+                            onClick={() =>
+                              setSelectedExportGroups(
+                                availableUserGroups
+                                  .filter((g) => ['G1', 'G2'].includes(g.name))
+                                  .map((g) => g.name)
+                              )
+                            }
+                            title="僅選 G1 和 G2 群組"
+                          >
+                            僅 G1/G2
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="shift-stats-group-checkbox-grid">
+                      {availableUserGroups.length === 0 ? (
+                        <span style={{ fontSize: '12px', color: '#94a3b8' }}>暫無群組資料</span>
+                      ) : (
+                        availableUserGroups.map(({ name, memberCount }) => {
+                          const checked = selectedExportGroups.includes(name)
+                          return (
+                            <label key={name} className="shift-stats-group-checkbox-item">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedExportGroups((prev) => [...prev, name])
+                                  } else {
+                                    setSelectedExportGroups((prev) =>
+                                      prev.filter((g) => g !== name)
+                                    )
+                                  }
+                                }}
+                              />
+                              <span>{name}</span>
+                              <span className="shift-stats-group-checkbox-badge">
+                                ({memberCount}人)
+                              </span>
+                            </label>
+                          )
+                        })
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <label className="shift-stats-grand-total-option">
+                  <input
+                    type="checkbox"
+                    checked={includeGrandTotal}
+                    onChange={(e) => setIncludeGrandTotal(e.target.checked)}
+                  />
+                  <span>
+                    包含<strong>全廠 Total</strong>（含日班 Total D、夜班 Total N 小計匯總行）
+                  </span>
+                </label>
+              </div>
+
+              <div className="shift-stats-preview-card">
+                <div>
+                  <strong>月份 Sheet：</strong>
+                  <span className="shift-stats-preview-tag">{exportMonthInfo.sheetName}</span>
+                  <span>（計算區間：{exportMonthInfo.rangeLabel}）</span>
+                </div>
+                <div style={{ marginTop: '8px' }}>
+                  <strong>週別 Sheets：</strong>
+                  {exportMonthInfo.weeks.map((w) => (
+                    <span key={w.sheetName} className="shift-stats-preview-tag">
+                      {w.sheetName}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ marginTop: '8px' }}>
+                  <strong>匯出範圍：</strong>
+                  {exportScopeMode === 'CATEGORIES' && reportCategories.length > 0 ? (
+                    selectedExportCategoryIds.length === 0 && !includeGrandTotal ? (
+                      <span style={{ color: '#ef4444', fontSize: '12px' }}>
+                        ⚠️ 尚未勾選任何自定義分類或 Total，請至少選取一項
+                      </span>
+                    ) : (
+                      <>
+                        {selectedExportCategoryIds.map((id) => {
+                          const cat = reportCategories.find((c) => c.id === id)
+                          return (
+                            <span key={id} className="shift-stats-preview-tag">
+                              🏷️ {cat?.name.trim() || '自訂分類'}
+                            </span>
+                          )
+                        })}
+                        {includeGrandTotal && (
+                          <span
+                            className="shift-stats-preview-tag"
+                            style={{ background: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}
+                          >
+                            Total (全廠)
+                          </span>
+                        )}
+                      </>
+                    )
+                  ) : (
+                    selectedExportGroups.length === 0 && !includeGrandTotal ? (
+                      <span style={{ color: '#ef4444', fontSize: '12px' }}>
+                        ⚠️ 尚未勾選任何群組或 Total，請至少選取一項
+                      </span>
+                    ) : (
+                      <>
+                        {selectedExportGroups.map((g) => (
+                          <span key={g} className="shift-stats-preview-tag">
+                            👥 {g}
+                          </span>
+                        ))}
+                        {includeGrandTotal && (
+                          <span
+                            className="shift-stats-preview-tag"
+                            style={{ background: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}
+                          >
+                            Total (全廠)
+                          </span>
+                        )}
+                      </>
+                    )
+                  )}
+                </div>
+                <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b' }}>
+                  💡 說明：
+                  <br />• 每一週包含 <strong>{exportMonthInfo.weeks[0]?.sheetName || 'W'}</strong> 等獨立 Sheet，最左側呈現該週總結，右側依序展開第 1 天至第 7 天每日明細。
+                  <br />• 另含 <strong>{exportMonthInfo.sheetName}</strong> 月份 Sheet，最左側呈現月總結，右側依序展開 {exportMonthInfo.weeks.map(w => `w${w.weekCode}`).join('、')}。
+                  <br />• 資料格式：分類、班別（DB, DA, Total D, NB, NA, Total N），每區塊皆有請假人數、加班人數、當班人數、請假率、加班率、淨出勤率。
+                </div>
+              </div>
+            </div>
+
+            <div className="shift-stats-modal-actions">
+              <button
+                type="button"
+                className="shift-stats-modal-btn"
+                onClick={() => setShowExportModal(false)}
+                disabled={exporting}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="shift-stats-modal-btn shift-stats-modal-btn-primary"
+                onClick={handleExportExcel}
+                disabled={exporting}
+              >
+                {exporting ? '產生 Excel 中…' : '開始下載 Excel (.xlsx)'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -197,3 +197,15 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
   a.remove()
   URL.revokeObjectURL(url)
 }
+
+export {
+  downloadShiftStatsWorkbook,
+  generateShiftStatsWorkbook,
+  getProductionMonthInfo,
+} from './shiftStatsExcelExport'
+export type {
+  ShiftStatsExportOptions,
+  ProductionMonthInfo,
+  ProductionMonthWeek,
+} from './shiftStatsExcelExport'
+
