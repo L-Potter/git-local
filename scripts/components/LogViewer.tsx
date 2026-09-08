@@ -1,9 +1,7 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
-import DataGrid from 'react-data-grid'
-import type { Column } from 'react-data-grid'
-import 'react-data-grid/lib/styles.css'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useLogsAPI, LogEntry, LogDeleteItem } from '../hooks/useLogsAPI'
 import { useAuth } from '../hooks/useAuth'
+import './LogViewer.css'
 
 /** action 英文代碼或舊資料 → 中文顯示 */
 const ACTION_LABEL_MAP: Record<string, string> = {
@@ -48,6 +46,11 @@ export const LogViewer: React.FC = () => {
   const [userFilter, setUserFilter] = useState<string>('')
   const [actionFilter, setActionFilter] = useState<string>('')
   const [detailsFilter, setDetailsFilter] = useState<string>('')
+
+  const [sortField, setSortField] = useState<keyof LogDisplayRow>('created_at')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+
+  const selectAllCheckboxRef = useRef<HTMLInputElement>(null)
 
   const reloadLogs = useCallback(() => {
     return getLogs().then((data) => {
@@ -100,41 +103,69 @@ export const LogViewer: React.FC = () => {
     })
   }, [localizedLogs, startDate, endDate, userFilter, actionFilter, detailsFilter])
 
-  const columns = useMemo((): Column<LogDisplayRow>[] => {
-    const dataCols: Column<LogDisplayRow>[] = [
-      { key: 'created_at', name: '生效時間', width: 170, resizable: true },
-      { key: 'user', name: '作用者', width: 180, resizable: true },
-      { key: 'action_label', name: '操作', width: 120, resizable: true },
-      { key: 'record_id', name: '作用日期', width: 140, resizable: true },
-      { key: 'details', name: '說明', resizable: true },
-    ]
-    if (user?.role !== 'admin') {
-      return dataCols
+  const sortedAndFilteredLogs = useMemo(() => {
+    const list = [...filteredLogs]
+    list.sort((a, b) => {
+      const valA = a[sortField] ?? ''
+      const valB = b[sortField] ?? ''
+      let cmp = 0
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        cmp = valA - valB
+      } else {
+        cmp = String(valA).localeCompare(String(valB), 'zh-Hant')
+      }
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+    return list
+  }, [filteredLogs, sortField, sortDirection])
+
+  const allFilteredSelected = useMemo(() => {
+    if (filteredLogs.length === 0) return false
+    return filteredLogs.every((r) => selectedRows.has(r.row_uid))
+  }, [filteredLogs, selectedRows])
+
+  const someFilteredSelected = useMemo(() => {
+    return filteredLogs.some((r) => selectedRows.has(r.row_uid))
+  }, [filteredLogs, selectedRows])
+
+  useEffect(() => {
+    if (selectAllCheckboxRef.current) {
+      selectAllCheckboxRef.current.indeterminate = someFilteredSelected && !allFilteredSelected
     }
-    const selectCol: Column<LogDisplayRow> = {
-      key: '_select',
-      name: '',
-      width: 44,
-      frozen: true,
-      renderCell: ({ row }) => (
-        <input
-          type="checkbox"
-          checked={selectedRows.has(row.row_uid)}
-          onChange={(ev) => {
-            ev.stopPropagation()
-            setSelectedRows((prev) => {
-              const next = new Set(prev)
-              if (ev.target.checked) next.add(row.row_uid)
-              else next.delete(row.row_uid)
-              return next
-            })
-          }}
-          aria-label="選取此筆日誌"
-        />
-      ),
+  }, [someFilteredSelected, allFilteredSelected])
+
+  const handleToggleSelectAll = () => {
+    setSelectedRows((prev) => {
+      const next = new Set(prev)
+      if (allFilteredSelected) {
+        filteredLogs.forEach((r) => next.delete(r.row_uid))
+      } else {
+        filteredLogs.forEach((r) => next.add(r.row_uid))
+      }
+      return next
+    })
+  }
+
+  const handleToggleRow = (rowUid: string) => {
+    setSelectedRows((prev) => {
+      const next = new Set(prev)
+      if (next.has(rowUid)) {
+        next.delete(rowUid)
+      } else {
+        next.add(rowUid)
+      }
+      return next
+    })
+  }
+
+  const handleSort = (field: keyof LogDisplayRow) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDirection('desc')
     }
-    return [selectCol, ...dataCols]
-  }, [user?.role, selectedRows])
+  }
 
   const formatBeforeForApi = (datetimeLocal: string): string => {
     const v = datetimeLocal.trim()
@@ -209,7 +240,7 @@ export const LogViewer: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: '20px', height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="log-viewer-page">
       <h2 style={{ marginBottom: '8px', color: '#333' }}>系統日誌</h2>
       {user.role === 'manager' && (
         <p style={{ margin: '0 0 16px', fontSize: 14, color: '#666' }}>
@@ -223,18 +254,7 @@ export const LogViewer: React.FC = () => {
         </p>
       )}
 
-      <div
-        style={{
-          display: 'flex',
-          gap: '10px',
-          marginBottom: '20px',
-          flexWrap: 'wrap',
-          background: '#f5f5f5',
-          padding: '15px',
-          borderRadius: '8px',
-          alignItems: 'center',
-        }}
-      >
+      <div className="log-filter-bar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
           <label style={{ fontSize: '14px', fontWeight: 'bold' }}>從:</label>
           <input
@@ -336,16 +356,115 @@ export const LogViewer: React.FC = () => {
         )}
       </div>
 
-      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <div className="log-table-container">
         {loading ? (
-          <p>載入中...</p>
+          <p style={{ padding: 20 }}>載入中...</p>
         ) : (
-          <DataGrid<LogDisplayRow, unknown, string>
-            columns={columns}
-            rows={filteredLogs}
-            rowKeyGetter={(row) => row.row_uid}
-            style={{ height: 'calc(100vh - 220px)', width: '100%', border: '1px solid #e0e0e0', borderRadius: '4px' }}
-          />
+          <table className="log-table">
+            <thead>
+              <tr>
+                {user.role === 'admin' && (
+                  <th style={{ width: 44, textAlign: 'center' }}>
+                    <input
+                      ref={selectAllCheckboxRef}
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={handleToggleSelectAll}
+                      aria-label="全選／取消全選"
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </th>
+                )}
+                <th
+                  className="sortable"
+                  style={{ width: 170 }}
+                  onClick={() => handleSort('created_at')}
+                >
+                  生效時間
+                  <span className="log-sort-icon">
+                    {sortField === 'created_at' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </th>
+                <th
+                  className="sortable"
+                  style={{ width: 180 }}
+                  onClick={() => handleSort('user')}
+                >
+                  作用者
+                  <span className="log-sort-icon">
+                    {sortField === 'user' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </th>
+                <th
+                  className="sortable"
+                  style={{ width: 120 }}
+                  onClick={() => handleSort('action_label')}
+                >
+                  操作
+                  <span className="log-sort-icon">
+                    {sortField === 'action_label' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </th>
+                <th
+                  className="sortable"
+                  style={{ width: 140 }}
+                  onClick={() => handleSort('record_id')}
+                >
+                  作用日期
+                  <span className="log-sort-icon">
+                    {sortField === 'record_id' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </th>
+                <th
+                  className="sortable"
+                  onClick={() => handleSort('details')}
+                >
+                  說明
+                  <span className="log-sort-icon">
+                    {sortField === 'details' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedAndFilteredLogs.length === 0 ? (
+                <tr>
+                  <td colSpan={user.role === 'admin' ? 6 : 5} className="log-empty-message">
+                    無符合條件的日誌
+                  </td>
+                </tr>
+              ) : (
+                sortedAndFilteredLogs.map((row) => {
+                  const isSelected = selectedRows.has(row.row_uid)
+                  return (
+                    <tr
+                      key={row.row_uid}
+                      className={isSelected ? 'row-selected' : ''}
+                      onClick={user.role === 'admin' ? () => handleToggleRow(row.row_uid) : undefined}
+                      style={{ cursor: user.role === 'admin' ? 'pointer' : 'default' }}
+                    >
+                      {user.role === 'admin' && (
+                        <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleRow(row.row_uid)}
+                            aria-label="選取此筆日誌"
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </td>
+                      )}
+                      <td style={{ whiteSpace: 'nowrap' }}>{row.created_at || '—'}</td>
+                      <td>{row.user}</td>
+                      <td>{row.action_label}</td>
+                      <td>{row.record_id || '—'}</td>
+                      <td style={{ wordBreak: 'break-all' }}>{row.details || '—'}</td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
