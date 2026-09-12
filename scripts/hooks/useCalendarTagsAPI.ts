@@ -1,7 +1,7 @@
 export interface CalendarTag {
   date: string
   is_holiday: number
-  shift_type: 'A' | 'B' | null
+  shift_type: 'A' | 'B' | '7' | null
   created_at?: string
   updated_at?: string
 }

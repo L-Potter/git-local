@@ -397,6 +397,16 @@ export const LogViewer: React.FC = () => {
                 </th>
                 <th
                   className="sortable"
+                  style={{ width: 130 }}
+                  onClick={() => handleSort('actor_employee_id')}
+                >
+                  作用者工號
+                  <span className="log-sort-icon">
+                    {sortField === 'actor_employee_id' ? (sortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                  </span>
+                </th>
+                <th
+                  className="sortable"
                   style={{ width: 120 }}
                   onClick={() => handleSort('action_label')}
                 >
@@ -429,7 +439,7 @@ export const LogViewer: React.FC = () => {
             <tbody>
               {sortedAndFilteredLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={user.role === 'admin' ? 6 : 5} className="log-empty-message">
+                  <td colSpan={user.role === 'admin' ? 7 : 6} className="log-empty-message">
                     無符合條件的日誌
                   </td>
                 </tr>
@@ -456,6 +466,7 @@ export const LogViewer: React.FC = () => {
                       )}
                       <td style={{ whiteSpace: 'nowrap' }}>{row.created_at || '—'}</td>
                       <td>{row.user}</td>
+                      <td>{row.actor_employee_id || '—'}</td>
                       <td>{row.action_label}</td>
                       <td>{row.record_id || '—'}</td>
                       <td style={{ wordBreak: 'break-all' }}>{row.details || '—'}</td>

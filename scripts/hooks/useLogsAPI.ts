@@ -17,6 +17,8 @@ export interface LogEntry {
   log_source?: 'admin' | 'user'
   /** user_log 所屬工號；admin_log 省略或空字串 */
   owner_employee_id?: string
+  /** 實際執行此操作的工號；舊日誌可能沒有記錄 */
+  actor_employee_id?: string
   user: string
   action: string
   table_name: string

@@ -5,7 +5,7 @@ export interface User {
   user_id: number
   name: string
   employee_id: string
-  shift_type: 'A' | 'B' | null
+  shift_type: 'A' | 'B' | '7' | null
   site: 'P1' | 'P2' | 'P3' | 'P4' | null
   day_night: 'D' | 'N' | null
   role: 'user' | 'admin' | 'manager'

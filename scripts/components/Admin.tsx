@@ -449,7 +449,7 @@ const Admin: React.FC = () => {
                         <td>{r.registration_id}</td>
                         <td>{r.name}</td>
                         <td>{r.employee_id}</td>
-                        <td>{r.shift_type || '—'}</td>
+                        <td>{r.shift_type === '7' ? '常日班' :r.shift_type === 'A' ? 'A班' : r.shift_type === 'B' ? 'B班' : (r.shift_type || '—')}</td>
                         <td>{r.site || '—'}</td>
                         <td>{r.day_night === 'D' ? '日班' : r.day_night === 'N' ? '夜班' : (r.day_night || '—')}</td>
                         <td>{r.created_at || '—'}</td>
@@ -747,6 +747,7 @@ const Admin: React.FC = () => {
                 >
                   <option value="A">A 班</option>
                   <option value="B">B 班</option>
+                  <option value="7">常日班</option>
                 </select>
               </div>
 
@@ -947,14 +948,15 @@ const Admin: React.FC = () => {
                             {isEditing ? (
                               <select
                                 value={editFormData.shift_type || ''}
-                                onChange={(e) => setEditFormData({ ...editFormData, shift_type: e.target.value as 'A' | 'B' })}
+                                onChange={(e) => setEditFormData({ ...editFormData, shift_type: e.target.value as 'A' | 'B' | '7' })}
                               >
                                 <option value="A">A 班</option>
                                 <option value="B">B 班</option>
+                                <option value="7">常日班</option>
                               </select>
                             ) : (
                               u.shift_type ? (
-                                <span className="badge shift-badge">{u.shift_type}</span>
+                                <span className="badge shift-badge"> {u.shift_type === '7' ? '常日班' : u.shift_type}</span>
                               ) : (
                                 <span style={{ color: '#999' }}>-</span>
                               )

@@ -1,3 +1,5 @@
+import { actorRequestHeaders } from '../utils/actorRequestHeaders'
+
 export interface UserGroup {
   id: number
   group: string
@@ -25,7 +27,7 @@ const API_BASE_URL = '/api'
 export const useGroupsAPI = () => {
   // 獲取所有群組
   const getGroups = async (): Promise<UserGroup[]> => {
-    const response = await fetch(`${API_BASE_URL}/groups`)
+    const response = await fetch(`${API_BASE_URL}/groups`, { headers: actorRequestHeaders() })
     if (!response.ok) {
       throw new Error('獲取群組列表失敗')
     }
@@ -38,6 +40,7 @@ export const useGroupsAPI = () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...actorRequestHeaders(),
       },
       body: JSON.stringify(data),
     })
@@ -56,6 +59,7 @@ export const useGroupsAPI = () => {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        ...actorRequestHeaders(),
       },
       body: JSON.stringify(data),
     })
@@ -72,6 +76,7 @@ export const useGroupsAPI = () => {
   const deleteGroup = async (id: number): Promise<void> => {
     const response = await fetch(`${API_BASE_URL}/groups/${id}`, {
       method: 'DELETE',
+      headers: actorRequestHeaders(),
     })
 
     if (!response.ok) {

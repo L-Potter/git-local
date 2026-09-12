@@ -1,3 +1,5 @@
+import { actorRequestHeaders } from '../utils/actorRequestHeaders'
+
 /** 跨班加班加班；NULL/省略表示非跨班或未選、沿用日曆 */
 export type OvertimeShiftCode = 'DA' | 'DB' | 'NA' | 'NB'
 
@@ -26,7 +28,7 @@ export interface User {
   user_id: number
   name: string
   employee_id: string
-  shift_type: 'A' | 'B' | null
+  shift_type: 'A' | 'B' | '7' | null
   site: 'P1' | 'P2' | 'P3' | 'P4' | null
   day_night: 'D' | 'N' | null
   role: 'user' | 'admin'
@@ -85,10 +87,10 @@ export const useShiftAssignmentsAPI = () => {
 
     // Fetch required data
     const [existingAssignmentsResponse, leaveTypes, users, calendarTags] = await Promise.all([
-      fetch(`${API_BASE_URL}/shift-assignments/${employeeId}`, { credentials: 'include' }),
-      fetch(`${API_BASE_URL}/leave-types`, { credentials: 'include' }).then(r => r.json()),
-      fetch(`${API_BASE_URL}/users`, { credentials: 'include' }).then(r => r.json()),
-      fetch(`${API_BASE_URL}/calendar-tags`, { credentials: 'include' }).then(r => r.json()).then(tags =>
+      fetch(`${API_BASE_URL}/shift-assignments/${employeeId}`, { credentials: 'include', headers: actorRequestHeaders() }),
+      fetch(`${API_BASE_URL}/leave-types`, { credentials: 'include', headers: actorRequestHeaders() }).then(r => r.json()),
+      fetch(`${API_BASE_URL}/users`, { credentials: 'include', headers: actorRequestHeaders() }).then(r => r.json()),
+      fetch(`${API_BASE_URL}/calendar-tags`, { credentials: 'include', headers: actorRequestHeaders() }).then(r => r.json()).then(tags =>
         tags.map((tag: any) => ({
           ...tag,
           isHoliday: tag.is_holiday === 1,
@@ -152,7 +154,8 @@ export const useShiftAssignmentsAPI = () => {
   // 获取用户的排班数据
   const getShiftAssignments = async (employeeId: string): Promise<ShiftAssignment[]> => {
     const response = await fetch(`${API_BASE_URL}/shift-assignments/${employeeId}`, {
-      credentials: 'include'
+      credentials: 'include',
+      headers: actorRequestHeaders(),
     })
     if (!response.ok) {
       throw new Error('获取排班数据失败')
@@ -174,6 +177,7 @@ export const useShiftAssignmentsAPI = () => {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        ...actorRequestHeaders(),
       },
       credentials: 'include',
       body: JSON.stringify({
@@ -198,6 +202,7 @@ export const useShiftAssignmentsAPI = () => {
     const response = await fetch(`${API_BASE_URL}/shift-assignments/${employeeId}/${date}`, {
       method: 'DELETE',
       credentials: 'include',
+      headers: actorRequestHeaders(),
     })
 
     if (!response.ok) {
@@ -219,6 +224,7 @@ export const useShiftAssignmentsAPI = () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...actorRequestHeaders(),
       },
       credentials: 'include',
       body: JSON.stringify({

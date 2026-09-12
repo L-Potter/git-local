@@ -1,8 +1,10 @@
+import { actorRequestHeaders } from '../utils/actorRequestHeaders'
+
 export interface User {
   user_id: number
   name: string
   employee_id: string
-  shift_type: 'A' | 'B' | null
+  shift_type: 'A' | 'B' | '7' | null
   site: 'P1' | 'P2' | 'P3' | 'P4' | null
   day_night: 'D' | 'N' | null
   role: 'user' | 'admin' | 'manager'
@@ -46,7 +48,7 @@ export interface PendingUserRegistration {
 export const useUsersAPI = () => {
   // 获取所有用户
   const getUsers = async (): Promise<User[]> => {
-    const response = await fetch(`${API_BASE_URL}/users`)
+    const response = await fetch(`${API_BASE_URL}/users`, { headers: actorRequestHeaders() })
     if (!response.ok) {
       throw new Error('获取用户列表失败')
     }
@@ -56,7 +58,7 @@ export const useUsersAPI = () => {
 
   // 获取单个用户
   const getUser = async (id: number): Promise<User> => {
-    const response = await fetch(`${API_BASE_URL}/users/${id}`)
+    const response = await fetch(`${API_BASE_URL}/users/${id}`, { headers: actorRequestHeaders() })
     if (!response.ok) {
       throw new Error('获取用户失败')
     }
@@ -69,6 +71,7 @@ export const useUsersAPI = () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...actorRequestHeaders(),
       },
       body: JSON.stringify(userData),
     })
@@ -87,6 +90,7 @@ export const useUsersAPI = () => {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
+        ...actorRequestHeaders(),
       },
       body: JSON.stringify(updates),
     })
@@ -101,6 +105,7 @@ export const useUsersAPI = () => {
   const deleteUser = async (id: number): Promise<void> => {
     const response = await fetch(`${API_BASE_URL}/users/${id}`, {
       method: 'DELETE',
+      headers: actorRequestHeaders(),
     })
 
     if (!response.ok) {
@@ -121,7 +126,7 @@ export const useUsersAPI = () => {
   }): Promise<{ message: string; registration_id: number }> => {
     const response = await fetch(`${API_BASE_URL}/register`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...actorRequestHeaders() },
       body: JSON.stringify(payload),
     })
     const data = await response.json().catch(() => ({}))
@@ -132,7 +137,7 @@ export const useUsersAPI = () => {
   }
 
   const getPendingUserRegistrations = async (): Promise<PendingUserRegistration[]> => {
-    const response = await fetch(`${API_BASE_URL}/user-registrations`)
+    const response = await fetch(`${API_BASE_URL}/user-registrations`, { headers: actorRequestHeaders() })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
       throw new Error((err as { error?: string }).error || '讀取待審清單失敗')
@@ -144,7 +149,7 @@ export const useUsersAPI = () => {
   const approveUserRegistration = async (registrationId: number): Promise<void> => {
     const response = await fetch(`${API_BASE_URL}/user-registrations/${registrationId}/approve`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...actorRequestHeaders() },
       body: '{}',
     })
     if (!response.ok) {
@@ -162,7 +167,7 @@ export const useUsersAPI = () => {
   }): Promise<void> => {
     const response = await fetch(`${API_BASE_URL}/change-password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...actorRequestHeaders() },
       body: JSON.stringify(payload),
     })
     const data = await response.json().catch(() => ({}))
@@ -177,7 +182,7 @@ export const useUsersAPI = () => {
   ): Promise<{ swapped: number; shift_type: string }> => {
     const response = await fetch(`${API_BASE_URL}/users/swap-day-night`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...actorRequestHeaders() },
       body: JSON.stringify({ shift_type: shiftType }),
     })
     const data = await response.json().catch(() => ({}))
@@ -193,7 +198,7 @@ export const useUsersAPI = () => {
   const rejectUserRegistration = async (registrationId: number): Promise<void> => {
     const response = await fetch(`${API_BASE_URL}/user-registrations/${registrationId}/reject`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...actorRequestHeaders() },
       body: '{}',
     })
     if (!response.ok) {
