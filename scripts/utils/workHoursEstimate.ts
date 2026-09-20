@@ -14,23 +14,23 @@ export function estimateHoursForSingleDate(
   assignment: Rolling30AssignmentEntry | undefined,
   leaveTypeByName: Map<string, LeaveType>,
   calendarTag: { pattern?: string | null; shift_type?: string | null } | undefined
-): number {
+): { hours: number; type: 'overtime' | 'leave' | 'regular' | 'none' } {
   if (assignment) {
     const leaveType = leaveTypeByName.get(assignment.shiftType)
     const manualHours = assignment.workHours ?? null
     if (leaveType?.is_not_workday === 1) {
-      return manualHours ?? 12
+      return { hours: manualHours ?? 12, type: 'overtime' }
     }
     if (leaveType?.is_not_workday === 0) {
       const leaveHours = manualHours ?? 10.5
-      return Math.max(0, 10.5 - leaveHours)
+      return { hours: Math.max(0, 10.5 - leaveHours), type: 'leave' }
     }
-    return 0
+    return { hours: 0, type: 'none' }
   }
   if ((calendarTag?.shift_type ?? calendarTag?.pattern) === userShiftType) {
-    return 11
+    return { hours: 10.5, type: 'regular' }
   }
-  return 0
+  return { hours: 0, type: 'none' }
 }
 
 /** 不含今天，往前回算 30 天的估算工時（與 LeaveOverview 相同規則） */
@@ -40,7 +40,7 @@ export function computePrevious30DaysEstimatedHours(
   assignments: Array<{ employee_id: string; date: string; shift_type: string; work_hours?: number | null }>,
   leaveTypeByName: Map<string, LeaveType>,
   getMonthMap: (year: number, month: number) => Record<string, { pattern?: string | null; shift_type?: string | null }>
-): { hours: number; start: string; end: string } {
+): { hours: number; start: string; end: string; breakdown: { overtime: number; leave: number; regular: number } } {
   const end = new Date()
   end.setHours(12, 0, 0, 0)
   end.setDate(end.getDate() - 1)
@@ -67,19 +67,24 @@ export function computePrevious30DaysEstimatedHours(
   }
 
   let hours = 0
+  const breakdown = { overtime: 0, leave: 0, regular: 0 }
   const cursor = new Date(start)
   while (cursor.getTime() <= end.getTime()) {
     const dateStr = formatDateString(cursor)
-    hours += estimateHoursForSingleDate(
+    const result = estimateHoursForSingleDate(
       userShiftType,
       assignmentMap.get(dateStr),
       leaveTypeByName,
       getTag(dateStr)
     )
+    hours += result.hours
+    if (result.type !== 'none') {
+      breakdown[result.type] += result.hours
+    }
     cursor.setDate(cursor.getDate() + 1)
   }
 
-  return { hours, start: startStr, end: endStr }
+  return { hours, start: startStr, end: endStr, breakdown }
 }
 
 export function getSundayWeek(date: Date): { weekYear: number; week: number } {

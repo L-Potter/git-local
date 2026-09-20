@@ -24,27 +24,27 @@ import { computeMonthlyOvertimeTotalHours } from '../utils/monthlyOvertimeHours'
 
 /** 非 manager：某月 25 日～次月月底不可填寫 */
 function isDateInLockedRange25ToNextMonthEnd(dateStr: string): boolean {
-    const today = new Date()
-    today.setHours(12, 0, 0, 0)
-  
-    const d = new Date(dateStr + 'T12:00:00')
-  
-    const year = today.getFullYear()
-    const month = today.getMonth()
-  
-    let start: Date
-    let end: Date
-  
-    if (today.getDate() >= 25) {
-      // 👉 本月 25 ～ 下月月底
-      start = new Date(year, month, 25)
-      end = new Date(year, month + 2, 1) // 半開區間
-    } else {
-      // 👉 上月 25 ～ 本月月底
-      start = new Date(year, month - 1, 25)
-      end = new Date(year, month + 1, 1)
-    }
-    return d >= start && d < end
+  const today = new Date()
+  today.setHours(12, 0, 0, 0)
+
+  const d = new Date(dateStr + 'T12:00:00')
+
+  const year = today.getFullYear()
+  const month = today.getMonth()
+
+  let start: Date
+  let end: Date
+
+  if (today.getDate() >= 25) {
+    // 👉 本月 25 ～ 下月月底
+    start = new Date(year, month, 25)
+    end = new Date(year, month + 2, 1) // 半開區間
+  } else {
+    // 👉 上月 25 ～ 本月月底
+    start = new Date(year, month - 1, 25)
+    end = new Date(year, month + 1, 1)
+  }
+  return d >= start && d < end
 }
 
 function isDateInOpenThreeMonthWindowAfterLock(dateStr: string): boolean {
@@ -204,24 +204,33 @@ function computeRolling30DayStats(
   let maxRollingHours = 0
   let maxWindowStart = ''
   let maxWindowEnd = ''
-  const over236Windows: Array<{ windowStart: string; windowEnd: string; hours: number }> = []
+  const maxRollingBreakdown = { overtime: 0, leave: 0, regular: 0 }
+  const over236Windows: Array<{ windowStart: string; windowEnd: string; hours: number; breakdown: { overtime: number; leave: number; regular: number } }> = []
 
   for (let windowStart = 0; windowStart <= allDates.length - 30; windowStart++) {
     const windowEnd = windowStart + 29
     let windowHours = 0
+    const currentBreakdown = { overtime: 0, leave: 0, regular: 0 }
 
     for (let i = windowStart; i <= windowEnd; i++) {
       const dateStr = allDates[i]
       const assignment = assignmentMap.get(dateStr)
       const calendarTag = calendarMap.get(dateStr)
 
-      windowHours += estimateHoursForSingleDate(userShiftType, assignment, leaveTypeByName, calendarTag)
+      const result = estimateHoursForSingleDate(userShiftType, assignment, leaveTypeByName, calendarTag)
+      windowHours += result.hours
+      if (result.type !== 'none') {
+        currentBreakdown[result.type] += result.hours
+      }
     }
 
     if (windowHours > maxRollingHours) {
       maxRollingHours = windowHours
       maxWindowStart = allDates[windowStart]
       maxWindowEnd = allDates[windowEnd]
+      maxRollingBreakdown.overtime = currentBreakdown.overtime
+      maxRollingBreakdown.leave = currentBreakdown.leave
+      maxRollingBreakdown.regular = currentBreakdown.regular
     }
 
     if (windowHours > 236) {
@@ -229,11 +238,12 @@ function computeRolling30DayStats(
         windowStart: allDates[windowStart],
         windowEnd: allDates[windowEnd],
         hours: windowHours,
+        breakdown: { ...currentBreakdown }
       })
     }
   }
 
-  return { maxRollingHours, maxWindowStart, maxWindowEnd, over236Windows }
+  return { maxRollingHours, maxWindowStart, maxWindowEnd, over236Windows, maxRollingBreakdown }
 }
 
 function estimateHoursForSingleDate(
@@ -241,23 +251,23 @@ function estimateHoursForSingleDate(
   assignment: Rolling30AssignmentEntry | undefined,
   leaveTypeByName: Map<string, LeaveType>,
   calendarTag: any
-): number {
+): { hours: number; type: 'overtime' | 'leave' | 'regular' | 'none' } {
   if (assignment) {
     const leaveType = leaveTypeByName.get(assignment.shiftType)
     const manualHours = assignment.workHours ?? null
     if (leaveType?.is_not_workday === 1) {
-      return manualHours ?? 12
+      return { hours: manualHours ?? 12, type: 'overtime' }
     }
     if (leaveType?.is_not_workday === 0) {
       const leaveHours = manualHours ?? 10.5
-      return Math.max(0, 10.5 - leaveHours)
+      return { hours: Math.max(0, 10.5 - leaveHours), type: 'leave' }
     }
-    return 0
+    return { hours: 0, type: 'none' }
   }
   if ((calendarTag?.shift_type ?? calendarTag?.pattern) === userShiftType) {
-    return 11
+    return { hours: 10.5, type: 'regular' }
   }
-  return 0
+  return { hours: 0, type: 'none' }
 }
 
 type ShiftLineDailyCategoryStats = {
@@ -294,7 +304,6 @@ const LeaveOverview: React.FC = () => {
   const [dbGroups, setDbGroups] = useState<UserGroup[]>([])
 
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [selectedDateRow, setSelectedDateRow] = useState<string | null>(null)
   const [assignments, setAssignments] = useState<ShiftAssignment[]>([])
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([])
@@ -588,27 +597,27 @@ const LeaveOverview: React.FC = () => {
       const quarterMonths =
         month <= 2
           ? [
-              { y: year, m: 0 },
-              { y: year, m: 1 },
-              { y: year, m: 2 },
-            ]
+            { y: year, m: 0 },
+            { y: year, m: 1 },
+            { y: year, m: 2 },
+          ]
           : month <= 5
             ? [
-                { y: year, m: 3 },
-                { y: year, m: 4 },
-                { y: year, m: 5 },
-              ]
+              { y: year, m: 3 },
+              { y: year, m: 4 },
+              { y: year, m: 5 },
+            ]
             : month <= 8
               ? [
-                  { y: year, m: 6 },
-                  { y: year, m: 7 },
-                  { y: year, m: 8 },
-                ]
+                { y: year, m: 6 },
+                { y: year, m: 7 },
+                { y: year, m: 8 },
+              ]
               : [
-                  { y: year, m: 9 },
-                  { y: year, m: 10 },
-                  { y: year, m: 11 },
-                ]
+                { y: year, m: 9 },
+                { y: year, m: 10 },
+                { y: year, m: 11 },
+              ]
       let quarterTotal = 0
       quarterMonths.forEach(({ y, m }) => {
         const { total } = computeMonthlyOvertimeTotalHours({
@@ -696,12 +705,17 @@ const LeaveOverview: React.FC = () => {
     }
 
     let hours = 0
+    const breakdown = { overtime: 0, leave: 0, regular: 0 }
     const cursor = new Date(start)
     while (cursor.getTime() <= end.getTime()) {
       const dateStr = formatDateString(cursor)
       const assignment = assignmentMap.get(dateStr)
       const calendarTag = getTag(dateStr)
-      hours += estimateHoursForSingleDate(effectiveUser.shift_type, assignment, leaveTypeMapByName, calendarTag)
+      const result = estimateHoursForSingleDate(effectiveUser.shift_type, assignment, leaveTypeMapByName, calendarTag)
+      hours += result.hours
+      if (result.type !== 'none') {
+        breakdown[result.type] += result.hours
+      }
       cursor.setDate(cursor.getDate() + 1)
     }
 
@@ -709,6 +723,7 @@ const LeaveOverview: React.FC = () => {
       hours,
       start: startStr,
       end: endStr,
+      breakdown,
     }
   }, [effectiveUser?.shift_type, targetEmployeeId, assignments, leaveTypeMapByName, getMonthMap])
 
@@ -1085,16 +1100,6 @@ const LeaveOverview: React.FC = () => {
   // 导航到下一个月
   const goToNextMonth = () => {
     setCurrentDate(new Date(year, month + 1, 1))
-  }
-
-  // 选择月份和年份
-  const selectMonth = (newMonth: number) => {
-    setCurrentDate(new Date(year, newMonth, 1))
-    setShowMonthPicker(false)
-  }
-
-  const selectYear = (newYear: number) => {
-    setCurrentDate(new Date(newYear, month, 1))
   }
 
   const goToToday = () => {
@@ -1705,12 +1710,12 @@ const LeaveOverview: React.FC = () => {
         const updated = prev.map((a) =>
           a.employee_id === targetEmployeeId && a.date === dateString
             ? {
-                ...a,
-                shift_type: raw.shift_type ?? a.shift_type,
-                comment: raw.comment ?? finalComment,
-                overtime_shift: raw.overtime_shift ?? a.overtime_shift ?? null,
-                work_hours: raw.work_hours ?? parsedWorkHours.value,
-              }
+              ...a,
+              shift_type: raw.shift_type ?? a.shift_type,
+              comment: raw.comment ?? finalComment,
+              overtime_shift: raw.overtime_shift ?? a.overtime_shift ?? null,
+              work_hours: raw.work_hours ?? parsedWorkHours.value,
+            }
             : a
         )
         const userOnly = updated.filter((a) => a.employee_id === targetEmployeeId)
@@ -1858,14 +1863,14 @@ const LeaveOverview: React.FC = () => {
             (rolling30DaysValidation.message ?? '') +
             '\n\n計算說明：\n' +
             '廠區停留時間：當班(算11小時)、加班(算手填時數)、請假(算10.5-手填時數)；上述時間為估算。實際依照廠區出入口刷出為主，目前估算在特定 30 天 (滾動視窗內時間區段) 內密度過高。\n'
-            alert(hint);
-            return
-            /** 
-            if (!window.confirm(hint)) {
-            return
-          }
-          rolling30UserConfirmed = true
-          */
+          alert(hint);
+          return
+          /** 
+          if (!window.confirm(hint)) {
+          return
+        }
+        rolling30UserConfirmed = true
+        */
         }
         if (leaveTypeDataForToggle?.is_not_workday === 1) {
           const ymd = new Date(dateString + 'T12:00:00')
@@ -1890,8 +1895,7 @@ const LeaveOverview: React.FC = () => {
           const cap = resolveMonthlyOvertimeCapHours(effectiveUser ?? undefined)
           if (projected > cap) {
             alert(
-              `當月加班時數（預估 ${projected} 小時）已超過上限 ${cap} 小時（${
-                effectiveUser?.monthly_overtime_cap_hours != null ? '個人因素請洽人力課長' : '全站預設'
+              `當月加班時數（預估 ${projected} 小時）已超過上限 ${cap} 小時（${effectiveUser?.monthly_overtime_cap_hours != null ? '個人因素請洽人力課長' : '全站預設'
               }），無法儲存。`
             )
             return
@@ -1970,26 +1974,35 @@ const LeaveOverview: React.FC = () => {
       <div className="overview-header">
         <div className="month-navigation">
           <button className="nav-arrow" onClick={goToPreviousMonth}>‹</button>
-          <div className="month-display" onClick={() => setShowMonthPicker(!showMonthPicker)}>
-            <span className="month-year">{month + 1}月, {year}</span>
-            {showMonthPicker && (
-              <div className="month-picker-dropdown">
-                <div className="picker-section">
-                  <div className="picker-title">选择月份</div>
-                  <div className="month-grid">
-                    {Array.from({ length: 12 }, (_, i) => (
-                      <button key={i} className={`month-option ${i === month ? 'selected' : ''}`} onClick={() => selectMonth(i)}>{i + 1}月</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="picker-section">
-                  <div className="picker-title">选择年份</div>
-                  <div className="year-input-group">
-                    <input type="number" value={year} onChange={(e) => selectYear(parseInt(e.target.value) || year)} className="year-input" />
-                  </div>
-                </div>
-              </div>
-            )}
+          <div className="month-display" style={{ position: 'relative', cursor: 'pointer', padding: '4px 8px' }}>
+            <span className="month-year">{year}年 {month + 1}月</span>
+            <input
+              type="date"
+              value={formatDateString(currentDate)}
+              className="calendar-date-picker"
+              onChange={(e) => {
+                const newDate = new Date(e.target.value)
+                if (!isNaN(newDate.getTime())) {
+                  setCurrentDate(newDate)
+                  setTimeout(() => {
+                    const dateStr = e.target.value
+                    const dateEl = document.getElementById(`date-row-${dateStr}`)
+                    if (dateEl) {
+                      dateEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    }
+                  }, 100)
+                }
+              }}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                opacity: 0,
+                cursor: 'pointer'
+              }}
+            />
           </div>
           <button className="nav-arrow" onClick={goToNextMonth}>›</button>
         </div>
@@ -2067,7 +2080,7 @@ const LeaveOverview: React.FC = () => {
               <h2 id="export-modal-title" className="export-modal-title">
                 匯出排班資料
               </h2>
-              
+
               <div className="export-modal-fields">
                 <label className="export-modal-label">
                   開始日期
@@ -2126,7 +2139,10 @@ const LeaveOverview: React.FC = () => {
             <div className="overtime-46-54-row">
               <div className="overtime-46-54-card">
                 <div className="overtime-46-54-label">當月 ({year}/{month + 1})</div>
-                <div className="overtime-46-54-value">
+                <div 
+                  className="overtime-46-54-value"
+                  title={`一般加班：${overtime46_54.monthly.regularOvertime10hr}h\n假日值班：${overtime46_54.monthly.holidayOnDuty2hr}h\n假日加班：${overtime46_54.monthly.holidayOvertime2hr}h`}
+                >
                   <span className={overtime46_54.monthly.total > overtime46_54.monthly.limitCap ? 'overtime-over' : ''}>
                     {overtime46_54.monthly.total}
                   </span>
@@ -2172,13 +2188,19 @@ const LeaveOverview: React.FC = () => {
                     <div className="overtime-46-54-label">
                       任意連續 30 日（檢視月 ±2 月範圍內掃描）
                       {previous30DaysEstimatedHours && (
-                        <span className="rolling30-recent-hours">
+                        <span 
+                          className="rolling30-recent-hours"
+                          title={`一般當班：${previous30DaysEstimatedHours.breakdown.regular}h\n一般加班：${previous30DaysEstimatedHours.breakdown.overtime}h\n請假(上班剩餘)：${previous30DaysEstimatedHours.breakdown.leave}h`}
+                        >
                           30日內(不含今日)估算：{previous30DaysEstimatedHours.hours}h
                           （{previous30DaysEstimatedHours.start}～{previous30DaysEstimatedHours.end}）
                         </span>
                       )}
                     </div>
-                    <div className="overtime-46-54-value">
+                    <div 
+                      className="overtime-46-54-value"
+                      title={`一般當班：${rolling30WorkHours.maxRollingBreakdown.regular}h\n一般加班：${rolling30WorkHours.maxRollingBreakdown.overtime}h\n請假(上班剩餘)：${rolling30WorkHours.maxRollingBreakdown.leave}h`}
+                    >
                       <span className={rolling30WorkHours.maxRollingHours > 236 ? 'overtime-over' : ''}>
                         {rolling30WorkHours.maxRollingHours}
                       </span>
@@ -2222,6 +2244,7 @@ const LeaveOverview: React.FC = () => {
           return (
             <div
               key={date.getTime()}
+              id={`date-row-${dateString}`}
               className={`date-row ${isSelected ? 'selected' : ''} ${isSaturday(date) ? 'saturday-row' : ''}`}
               onDoubleClick={() => handleDateRowDoubleClick(dateString)}
             >

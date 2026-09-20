@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { actorRequestHeaders } from '../utils/actorRequestHeaders'
 
 export type ShiftPattern = 'A' | 'B'
 
@@ -28,7 +29,11 @@ export const useCalendarTags = () => {
   const getAllTags = async (): Promise<CalendarTag[]> => {
     setLoading(true)
     try {
-      const response = await fetch(`${API_BASE_URL}/calendar-tags`)
+      const response = await fetch(`${API_BASE_URL}/calendar-tags`, {
+        headers: {
+          ...actorRequestHeaders(),
+        },
+      })
       if (!response.ok) {
         throw new Error('获取日历标签失败')
       }
@@ -52,7 +57,11 @@ export const useCalendarTags = () => {
   // 获取特定日期的标签
   const getTag = async (date: string): Promise<CalendarTag | null> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/calendar-tags/${date}`)
+      const response = await fetch(`${API_BASE_URL}/calendar-tags/${date}`, {
+        headers: {
+          ...actorRequestHeaders(),
+        },
+      })
       if (!response.ok) {
         throw new Error('获取日历标签失败')
       }
@@ -77,6 +86,7 @@ export const useCalendarTags = () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...actorRequestHeaders(),
         },
         body: JSON.stringify({
           is_holiday: isHoliday,
@@ -103,6 +113,13 @@ export const useCalendarTags = () => {
     try {
       const response = await fetch(`${API_BASE_URL}/calendar-tags/${date}`, {
         method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...actorRequestHeaders(),
+        },
+        body: JSON.stringify({
+          comment: '刪除',
+        }),
       })
 
       if (!response.ok) {
@@ -125,6 +142,7 @@ export const useCalendarTags = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...actorRequestHeaders(),
         },
         body: JSON.stringify({ tags }),
       })
