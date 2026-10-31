@@ -42,14 +42,16 @@ const Admin: React.FC = () => {
   const [groupError, setGroupError] = useState('')
   const [groupSuccess, setGroupSuccess] = useState('')
   const [editingGroupId, setEditingGroupId] = useState<number | null>(null)
-  const [editGroupData, setEditGroupData] = useState<{ group: string; grouplimitnumber: number; allow_overtime: number }>({
+  const [editGroupData, setEditGroupData] = useState<{ group: string; grouplimitnumber: number; groupovertimelimitnumber: number; allow_overtime: number }>({
     group: '',
     grouplimitnumber: 3,
+    groupovertimelimitnumber: 3,
     allow_overtime: 1,
   })
-  const [newGroupForm, setNewGroupForm] = useState<{ group: string; grouplimitnumber: number; allow_overtime: number }>({
+  const [newGroupForm, setNewGroupForm] = useState<{ group: string; grouplimitnumber: number; groupovertimelimitnumber: number; allow_overtime: number }>({
     group: '',
     grouplimitnumber: 3,
+    groupovertimelimitnumber: 3,
     allow_overtime: 1,
   })
 
@@ -312,10 +314,11 @@ const Admin: React.FC = () => {
       await createGroup({
         group: trimmed,
         grouplimitnumber: Number(newGroupForm.grouplimitnumber) || 0,
+        groupovertimelimitnumber: Number(newGroupForm.groupovertimelimitnumber) || 0,
         allow_overtime: Number(newGroupForm.allow_overtime) === 0 ? 0 : 1,
       })
       setGroupSuccess(`群組「${trimmed}」建立成功`)
-      setNewGroupForm({ group: '', grouplimitnumber: 3, allow_overtime: 1 })
+      setNewGroupForm({ group: '', grouplimitnumber: 3, groupovertimelimitnumber: 3, allow_overtime: 1 })
       await loadGroups()
       setTimeout(() => setGroupSuccess(''), 3000)
     } catch (err) {
@@ -330,6 +333,7 @@ const Admin: React.FC = () => {
       await updateGroup(id, {
         group: editGroupData.group.trim(),
         grouplimitnumber: Number(editGroupData.grouplimitnumber) || 0,
+        groupovertimelimitnumber: Number(editGroupData.groupovertimelimitnumber) || 0,
         allow_overtime: Number(editGroupData.allow_overtime) === 0 ? 0 : 1,
       })
       setGroupSuccess('群組更新成功')
@@ -532,6 +536,17 @@ const Admin: React.FC = () => {
                 />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 500 }}>加班人數限制 (groupovertimelimitnumber) *</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={newGroupForm.groupovertimelimitnumber}
+                  onChange={(e) => setNewGroupForm({ ...newGroupForm, groupovertimelimitnumber: parseInt(e.target.value) || 0 })}
+                  style={{ padding: '8px 10px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '13px', width: '120px' }}
+                  required
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '13px', fontWeight: 500 }}>允許加班沖銷請假數 (allow overtime) *</label>
                 <select
                   value={newGroupForm.allow_overtime}
@@ -564,6 +579,7 @@ const Admin: React.FC = () => {
                       <th>ID</th>
                       <th>群組名稱 (group)</th>
                       <th>請假限制人數 (grouplimitnumber)</th>
+                      <th>加班限制人數 (groupovertimelimitnumber)</th>
                       <th>加班沖銷 (allow overtime)</th>
                       <th>操作</th>
                     </tr>
@@ -597,6 +613,19 @@ const Admin: React.FC = () => {
                               />
                             ) : (
                               <span>{g.grouplimitnumber} 人</span>
+                            )}
+                          </td>
+                          <td>
+                            {isEditing ? (
+                              <input
+                                type="number"
+                                min="0"
+                                value={editGroupData.groupovertimelimitnumber}
+                                onChange={(e) => setEditGroupData({ ...editGroupData, groupovertimelimitnumber: parseInt(e.target.value) || 0 })}
+                                style={{ padding: '4px 8px', fontSize: '13px', width: '80px' }}
+                              />
+                            ) : (
+                              <span>{g.groupovertimelimitnumber} 人</span>
                             )}
                           </td>
                           <td>
@@ -655,6 +684,7 @@ const Admin: React.FC = () => {
                                     setEditGroupData({
                                       group: g.group,
                                       grouplimitnumber: g.grouplimitnumber,
+                                      groupovertimelimitnumber: g.groupovertimelimitnumber,
                                       allow_overtime: g.allow_overtime ?? (g['allow overtime'] ?? 1),
                                     })
                                   }}

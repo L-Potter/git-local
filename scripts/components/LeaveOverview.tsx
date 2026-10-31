@@ -1792,9 +1792,9 @@ const LeaveOverview: React.FC = () => {
         }
         const workHoursForSave = parsedWorkHoursForSave.value
 
-        // Check rule: if leave type is_not_workday === 0 (請假), check same group limit (max 3)
+        // Check rule: 請假 (is_not_workday === 0) 或 加班 (is_not_workday === 1) 時檢查群組人數上限
         const leaveTypeData = leaveTypeDataForToggle
-        if (leaveTypeData && leaveTypeData.is_not_workday === 0 && effectiveUser?.group) {
+        if (leaveTypeData && (leaveTypeData.is_not_workday === 0 || leaveTypeData.is_not_workday === 1) && effectiveUser?.group) {
           const userGroup = effectiveUser.group
           let groupLeaveCount = 0
           let groupOvertimeCount = 0
@@ -1821,17 +1821,35 @@ const LeaveOverview: React.FC = () => {
 
           const matchedGroup = dbGroups.find(g => g.group === userGroup)
           const limit = matchedGroup ? matchedGroup.grouplimitnumber : 3
+          const overtimeLimit = matchedGroup ? (matchedGroup.groupovertimelimitnumber ?? 3) : 3
           const allowOvertime = matchedGroup ? (matchedGroup.allow_overtime ?? (matchedGroup['allow overtime'] ?? 1)) : 1
+          console.log('加班上限檢查', { limit, overtimeLimit, allowOvertime, groupLeaveCount, groupOvertimeCount })
 
-          if (allowOvertime === 0) {
-            if (groupLeaveCount >= limit) {
-              alert(`該群組 (${userGroup}) 在這天已有 ${groupLeaveCount} 人請假。請假數已達 ${limit} 人限制，無法再新增請假資料，請聯繫主管`)
-              return
+          if (leaveTypeData.is_not_workday === 0) {
+            // 請假上限檢查
+            if (allowOvertime === 0) {
+              if (groupLeaveCount >= limit) {
+                alert(`該群組 (${userGroup}) 在這天已有 ${groupLeaveCount} 人請假。請假數已達 ${limit} 人限制，無法再新增請假資料，請聯繫主管`)
+                return
+              }
+            } else {
+              if (groupLeaveCount - groupOvertimeCount >= limit) {
+                alert(`該群組 (${userGroup}) 在這天已有 ${groupLeaveCount} 人請假，並有 ${groupOvertimeCount} 人加班。淨請假數已達 ${limit} 人限制，無法再新增請假資料，請聯繫主管`)
+                return
+              }
             }
-          } else {
-            if (groupLeaveCount - groupOvertimeCount >= limit) {
-              alert(`該群組 (${userGroup}) 在這天已有 ${groupLeaveCount} 人請假，並有 ${groupOvertimeCount} 人加班。淨請假數已達 ${limit} 人限制，無法再新增請假資料，請聯繫主管`)
-              return
+          } else if (leaveTypeData.is_not_workday === 1) {
+            // 加班上限檢查
+            if (allowOvertime === 0) {
+              if (groupOvertimeCount >= overtimeLimit) {
+                alert(`該群組 (${userGroup}) 在這天已有 ${groupOvertimeCount} 人加班。加班數已達 ${overtimeLimit} 人限制，無法再新增加班資料，請聯繫主管`)
+                return
+              }
+            } else {
+              if (groupOvertimeCount - groupLeaveCount >= overtimeLimit) {
+                alert(`該群組 (${userGroup}) 在這天已有 ${groupOvertimeCount} 人加班，並有 ${groupLeaveCount} 人請假。淨加班數已達 ${overtimeLimit} 人限制，無法再新增加班資料，請聯繫主管`)
+                return
+              }
             }
           }
         }
@@ -2139,7 +2157,7 @@ const LeaveOverview: React.FC = () => {
             <div className="overtime-46-54-row">
               <div className="overtime-46-54-card">
                 <div className="overtime-46-54-label">當月 ({year}/{month + 1})</div>
-                <div 
+                <div
                   className="overtime-46-54-value"
                   title={`一般加班：${overtime46_54.monthly.regularOvertime10hr}h\n假日值班：${overtime46_54.monthly.holidayOnDuty2hr}h\n假日加班：${overtime46_54.monthly.holidayOvertime2hr}h`}
                 >
@@ -2188,7 +2206,7 @@ const LeaveOverview: React.FC = () => {
                     <div className="overtime-46-54-label">
                       任意連續 30 日（檢視月 ±2 月範圍內掃描）
                       {previous30DaysEstimatedHours && (
-                        <span 
+                        <span
                           className="rolling30-recent-hours"
                           title={`一般當班：${previous30DaysEstimatedHours.breakdown.regular}h\n一般加班：${previous30DaysEstimatedHours.breakdown.overtime}h\n請假(上班剩餘)：${previous30DaysEstimatedHours.breakdown.leave}h`}
                         >
@@ -2197,7 +2215,7 @@ const LeaveOverview: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <div 
+                    <div
                       className="overtime-46-54-value"
                       title={`一般當班：${rolling30WorkHours.maxRollingBreakdown.regular}h\n一般加班：${rolling30WorkHours.maxRollingBreakdown.overtime}h\n請假(上班剩餘)：${rolling30WorkHours.maxRollingBreakdown.leave}h`}
                     >

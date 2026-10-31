@@ -4,6 +4,7 @@ export interface UserGroup {
   id: number
   group: string
   grouplimitnumber: number
+  groupovertimelimitnumber: number
   allow_overtime: number
   'allow overtime'?: number
 }
@@ -11,6 +12,7 @@ export interface UserGroup {
 export interface CreateUserGroupData {
   group: string
   grouplimitnumber?: number
+  groupovertimelimitnumber?: number
   allow_overtime?: number
   'allow overtime'?: number
 }
@@ -18,6 +20,7 @@ export interface CreateUserGroupData {
 export interface UpdateUserGroupData {
   group?: string
   grouplimitnumber?: number
+  groupovertimelimitnumber?: number
   allow_overtime?: number
   'allow overtime'?: number
 }
